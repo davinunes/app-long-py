@@ -23,89 +23,84 @@ COLOR_LIGHT_GRAY = colors.HexColor('#ecf0f1')
 
 # --- Funções Auxiliares ---
 
-def draw_header_footer(canvas, doc):
+def draw_footer(canvas, doc):
     canvas.saveState()
     PAGE_WIDTH, PAGE_HEIGHT = doc.pagesize
-    logo_path = 'logo.png'
-    if os.path.exists(logo_path):
-        try:
-            img = ImageReader(logo_path)
-            img_width, img_height = img.getSize()
-            aspect = img_height / float(img_width)
-            logo_width = 1.2 * inch
-            logo_height = logo_width * aspect
-            logo = Image(logo_path, width=logo_width, height=logo_height)
-            logo.hAlign = 'LEFT'
-            logo.drawOn(canvas, doc.leftMargin, PAGE_HEIGHT - 1.05 * inch)
-        except Exception as e:
-            print(f"Não foi possível carregar o logo: {e}")
-
-    canvas.setFont('Helvetica-Bold', 14)
-    canvas.setFillColor(COLOR_PRIMARY)
-    canvas.drawRightString(doc.width + doc.leftMargin, PAGE_HEIGHT - 0.8 * inch, "Notificação Condominial")
-    canvas.setFont('Helvetica', 9)
-    canvas.setFillColor(COLOR_TEXT)
-    canvas.drawRightString(doc.width + doc.leftMargin, PAGE_HEIGHT - 1.0 * inch, "Documento Oficial")
-    canvas.setStrokeColor(COLOR_LIGHT_GRAY)
-    canvas.setLineWidth(1)
-    canvas.line(doc.leftMargin, PAGE_HEIGHT - 1.2 * inch, doc.width + doc.leftMargin, PAGE_HEIGHT - 1.2 * inch)
     canvas.setFont('Helvetica', 8)
     canvas.setFillColor(colors.grey)
+    canvas.setStrokeColor(COLOR_LIGHT_GRAY)
+    canvas.setLineWidth(0.5)
+    canvas.line(doc.leftMargin, 0.7 * inch, doc.width + doc.leftMargin, 0.7 * inch)
     canvas.drawRightString(doc.width + doc.leftMargin, 0.5 * inch, f"Página {doc.page}")
-    canvas.drawString(doc.leftMargin, 0.5 * inch, "Condomínio Miami Beach")
+    canvas.drawString(doc.leftMargin, 0.5 * inch, "Condomínio Miami Beach - Documento Oficial")
     canvas.restoreState()
 
 def formatar_data(data_string):
     if not data_string:
         data_atual = datetime.now()
-        return data_atual.strftime(f"%d de {nomes_meses[data_atual.month - 1]} de %Y")
-    try:
-        data_obj = datetime.strptime(data_string, '%Y-%m-%d')
-        return data_obj.strftime(f"%d de {nomes_meses[data_obj.month - 1]} de %Y")
-    except (ValueError, TypeError):
-        data_atual = datetime.now()
-        return data_atual.strftime(f"%d de {nomes_meses[data_atual.month - 1]} de %Y")
+    else:
+        try:
+            data_atual = datetime.strptime(data_string, '%Y-%m-%d')
+        except (ValueError, TypeError):
+            data_atual = datetime.now()
+    return data_atual.strftime(f"%d de {nomes_meses[data_atual.month - 1]} de %Y")
+
+def criar_cabecalho(dados, styles):
+    logo_path = 'logo.png'
+    logo_content = []
+    if os.path.exists(logo_path):
+        try:
+            img = ImageReader(logo_path)
+            img_width, img_height = img.getSize()
+            aspect = img_height / float(img_width)
+            logo_width = 1.5 * inch
+            logo_content.append(Image(logo_path, width=logo_width, height=(logo_width * aspect)))
+        except Exception:
+            logo_content.append(Paragraph("Condomínio Miami Beach", styles['h2']))
+    else:
+        logo_content.append(Paragraph("Condomínio Miami Beach", styles['h2']))
+
+    unidade_completa = f"{dados.get('bloco', '')}{dados.get('unidade', '')}"
+    data_formatada = formatar_data(dados.get('data_emissao'))
+    
+    info_data = [
+        [Paragraph('<b>Documento N°:</b>', styles['Normal']), Paragraph(dados.get('numero', ''), styles['Normal'])],
+        [Paragraph('<b>Data de Emissão:</b>', styles['Normal']), Paragraph(data_formatada, styles['Normal'])],
+        [Paragraph('<b>Unidade Notificada:</b>', styles['Normal']), Paragraph(unidade_completa, styles['Normal'])],
+        [Paragraph('<b>Tipo:</b>', styles['Normal']), Paragraph(dados.get('tipo_notificacao', 'N/A'), styles['Normal'])],
+        [Paragraph('<b>Assunto:</b>', styles['Normal']), Paragraph(dados.get('assunto', ''), styles['Normal'])],
+    ]
+    info_table = Table(info_data, colWidths=[1.5*inch, None], style=[('VALIGN', (0,0), (-1,-1), 'TOP'), ('LEFTPADDING', (0,0), (-1,-1), 0), ('BOTTOMPADDING', (0,0), (-1,-1), 4)])
+
+    main_header_table = Table([[logo_content, info_table]], colWidths=[1.8*inch, None], style=[('VALIGN', (0, 0), (-1, -1), 'TOP'), ('LEFTPADDING', (0,0), (0,0), 0)])
+    
+    return main_header_table
 
 # --- Função Principal de Geração de PDF ---
 
 def gerar_pdf_com_reportlab(dados):
     buffer = BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=A4, leftMargin=1*inch, rightMargin=1*inch, topMargin=1.8*inch, bottomMargin=1*inch)
+    doc = SimpleDocTemplate(buffer, pagesize=A4, leftMargin=1*inch, rightMargin=1*inch, topMargin=0.8*inch, bottomMargin=1*inch)
     
     styles = getSampleStyleSheet()
     story = []
-    titulo_style = ParagraphStyle('CustomTitle', parent=styles['h1'], fontSize=18, spaceAfter=12, alignment=1, textColor=COLOR_PRIMARY)
-    subtitulo_style = ParagraphStyle('CustomHeading', parent=styles['h2'], fontSize=12, spaceBefore=12, spaceAfter=6, textColor=COLOR_PRIMARY, fontName='Helvetica-Bold')
+    
+    subtitulo_style = ParagraphStyle('CustomHeading', parent=styles['h2'], fontSize=12, spaceBefore=18, spaceAfter=6, textColor=COLOR_PRIMARY, fontName='Helvetica-Bold')
     normal_style = ParagraphStyle('CustomNormal', parent=styles['Normal'], fontSize=10, leading=14, textColor=COLOR_TEXT, alignment=4)
 
-    # Título, Data e Dados
-    numero = dados.get('numero', '')
-    story.append(Paragraph(f"Documento N° {numero}", titulo_style))
-    story.append(Spacer(1, 0.2 * inch))
-    story.append(Paragraph(formatar_data(dados.get('data_emissao')), ParagraphStyle('DataStyle', parent=normal_style, alignment=2)))
+    # Criação do cabeçalho unificado
+    cabecalho_tabela = criar_cabecalho(dados, styles)
+    story.append(cabecalho_tabela)
     story.append(Spacer(1, 0.3 * inch))
-    story.append(Paragraph("DADOS", subtitulo_style))
-    story.append(HRFlowable(width="100%", thickness=0.5, color=COLOR_LIGHT_GRAY, spaceAfter=5))
-    
-    unidade_completa = f"{dados.get('bloco', '')}{dados.get('unidade', '')}"
-    dados_tabela = [
-        [Paragraph('<b>Unidade Notificada:</b>', normal_style), Paragraph(unidade_completa, normal_style)],
-        [Paragraph('<b>Tipo:</b>', normal_style), Paragraph(dados.get('tipo_notificacao', 'N/A'), normal_style)],
-        [Paragraph('<b>Assunto:</b>', normal_style), Paragraph(dados.get('assunto', ''), normal_style)],
-    ]
-    tabela = Table(dados_tabela, colWidths=[2.2*inch, None])
-    tabela.setStyle(TableStyle([('VALIGN', (0, 0), (-1, -1), 'TOP'), ('LEFTPADDING', (0, 0), (-1, -1), 0), ('BOTTOMPADDING', (0, 0), (-1, -1), 8)]))
-    story.append(tabela)
-    story.append(Spacer(1, 0.2 * inch))
 
     # Fatos
     if dados.get('fatos'):
         story.append(Paragraph("I. DOS FATOS", subtitulo_style))
         story.append(HRFlowable(width="100%", thickness=0.5, color=COLOR_LIGHT_GRAY, spaceAfter=5))
-        for i, fato in enumerate(dados['fatos'], 1):
+        for i, fato in enumerate(dados.get('fatos', []), 1):
             story.append(Paragraph(f"{i}. {fato}", normal_style))
     
-    # --- BLOCO DE CÓDIGO DAS IMAGENS (AGORA CORRETO) ---
+    # --- BLOCO DE CÓDIGO DAS IMAGENS (AGORA CORRETO E COMPLETO) ---
     fotos_b64 = dados.get('fotos_fatos', [])
     if fotos_b64 and isinstance(fotos_b64, list):
         story.append(Paragraph("EVIDÊNCIAS FOTOGRÁFICAS", subtitulo_style))
@@ -121,7 +116,7 @@ def gerar_pdf_com_reportlab(dados):
                 img_file = BytesIO(img_bytes)
                 img_reader = ImageReader(img_file)
                 iw, ih = img_reader.getSize()
-                aspect = ih / float(iw)
+                aspect = ih / float(iw) if iw > 0 else 0
                 new_height = max_img_width * aspect
                 img = Image(img_file, width=max_img_width, height=new_height)
                 image_row.append(img)
@@ -149,11 +144,7 @@ def gerar_pdf_com_reportlab(dados):
     # Direito ao Recurso
     url_recurso = dados.get('url_recurso', '#')
     prazo_recurso = dados.get('prazo_recurso', 5)
-    texto_recurso = f"""
-    Fica assegurado o direito de apresentação de recurso. Para tanto, concede-se o prazo de <b>{prazo_recurso} dias úteis</b>
-    para apresentação do instrumento de defesa, que deve ser submetido através do seguinte endereço:
-    <b><a href="{url_recurso}" color="blue">{url_recurso}</a></b>.
-    """
+    texto_recurso = f"""Fica assegurado o direito de apresentação de recurso. Para tanto, concede-se o prazo de <b>{prazo_recurso} dias úteis</b> para apresentação do instrumento de defesa, que deve ser submetido através do seguinte endereço: <b><a href="{url_recurso}" color="blue">{url_recurso}</a></b>."""
     story.append(Paragraph("IV. DO DIREITO AO CONTRADITÓRIO E AMPLA DEFESA", subtitulo_style))
     story.append(HRFlowable(width="100%", thickness=0.5, color=COLOR_LIGHT_GRAY, spaceAfter=5))
     story.append(Paragraph(texto_recurso, normal_style))
@@ -166,12 +157,11 @@ def gerar_pdf_com_reportlab(dados):
     story.append(Paragraph(f"<b>{dados.get('nome_assinatura', 'Administração do Condomínio')}</b>", normal_style))
     story.append(Paragraph(dados.get('cargo_assinatura', 'Síndico'), normal_style))
     
-    doc.build(story, onFirstPage=draw_header_footer, onLaterPages=draw_header_footer)
+    doc.build(story, onFirstPage=draw_footer, onLaterPages=draw_footer)
     buffer.seek(0)
     return buffer.getvalue()
 
 # --- Rotas da API ---
-
 @app.route('/gerar_documento', methods=['POST'])
 def gerar_documento():
     try:
@@ -187,7 +177,6 @@ def gerar_documento():
             'Content-Type': 'application/pdf',
             'Content-Disposition': f'inline; filename={nome_arquivo}'
         }
-
     except Exception as e:
         print("!!!!!! OCORREU UM ERRO INTERNO AO GERAR O PDF !!!!!!")
         traceback.print_exc()
