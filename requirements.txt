@@ -1,0 +1,6 @@
+flask
+reportlab
+flask-cors
+mysql-connector-python
+waitress
+pillow
